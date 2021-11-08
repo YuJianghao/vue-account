@@ -158,22 +158,6 @@ class Account {
   public async changeInfo(info: { username?: string; password?: string } = {}) {
     await this.access.put("/info", info);
   }
-  public beforeEachGuard(config: { home: string; signin: string }) {
-    return (to: RouteLocationNormalized, from: RouteLocationNormalized) => {
-      if (from.path === "/" && to.path === config.home && this.isSignedIn) {
-        return true;
-      }
-      if (to.path === config.signin) {
-        if (this.isSignedIn) {
-          return "/";
-        } else return true;
-      } else {
-        if (!this.isSignedIn) {
-          return config.signin;
-        } else return true;
-      }
-    };
-  }
 }
 
 export function createAccount(config: IConfig) {

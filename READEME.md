@@ -25,13 +25,7 @@ export default createAccount({
 
 // router.ts
 
-router.beforeEach(
-  account.beforeEachGuard({
-    home: "/home", // custom frontend home route
-    signin: "/signin", // custom frontend signin route
-  })
-);
-// This will redirect to `/signin` if not signin, and redirect `/signin` to `/home` if signed in
+router.beforeEach(/** You need to implement router guard yourself. */);
 
 // main.ts
 app.use(account);
