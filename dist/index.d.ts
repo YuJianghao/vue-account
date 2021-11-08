@@ -1,6 +1,5 @@
 import { App, InjectionKey } from "vue";
 import { AxiosInstance } from "axios";
-import { RouteLocationNormalized } from "vue-router";
 interface IConfig {
     baseURL: string;
     authBaseURL?: string;
@@ -37,10 +36,6 @@ declare class Account {
         username?: string;
         password?: string;
     }): Promise<void>;
-    beforeEachGuard(config: {
-        home: string;
-        signin: string;
-    }): (to: RouteLocationNormalized, from: RouteLocationNormalized) => string | true;
 }
 export declare function createAccount(config: IConfig): Account;
 export declare function useAccount(key?: InjectionKey<Account> | string | null): Account | undefined;
