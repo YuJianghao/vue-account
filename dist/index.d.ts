@@ -1,42 +1,34 @@
-import { App, InjectionKey } from "vue";
-import { AxiosInstance } from "axios";
+import { App, InjectionKey, ComputedRef } from "vue";
+import { AxiosInstance, AxiosRequestConfig } from "axios";
 interface IConfig {
     baseURL: string;
     authBaseURL?: string;
     onTokenExpire: () => void;
     prefix?: string;
+    getAxiosInstance?: (config?: AxiosRequestConfig) => AxiosInstance;
+    injectionKey?: string;
 }
 interface IUserInfo {
     username: string;
 }
-declare class Account {
-    private baseURL;
-    private authBaseURL;
-    private onTokenExpire;
-    private storage;
+interface IAccount {
+    readonly defaults: {
+        baseURL: string;
+        headers: {
+            ["Content-Type"]: "application/json";
+        };
+    };
+    readonly isSignedIn: boolean;
     origin: AxiosInstance;
     access: AxiosInstance;
     refresh: AxiosInstance;
-    constructor(config: IConfig);
-    install(vue: App, injectKey?: InjectionKey<Account> | string): void;
-    get defaults(): {
-        baseURL: string;
-        headers: {
-            "Content-Type": string;
-        };
-    };
-    private withAuthBase;
-    private setupAccess;
-    private setupRequest;
-    get isSignedIn(): boolean;
-    signin(username: string, password: string): Promise<any>;
-    signout(): Promise<void>;
-    info(): Promise<IUserInfo>;
-    changeInfo(info?: {
-        username?: string;
-        password?: string;
-    }): Promise<void>;
+    user: ComputedRef<IUserInfo | undefined>;
+    signin(username: string, password: string): void;
+    info(): void;
+    signout(): void;
+    changeInfo(info?: IUserInfo): void;
+    install(app: App): void;
 }
-export declare function createAccount(config: IConfig): Account;
-export declare function useAccount(key?: InjectionKey<Account> | string | null): Account | undefined;
+export declare function createAccount(config: IConfig): IAccount;
+export declare function useAccount(key?: InjectionKey<IAccount> | string | null): IAccount;
 export {};
