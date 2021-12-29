@@ -1,5 +1,5 @@
-import { App, InjectionKey, inject } from "vue";
-import axios, { AxiosInstance } from "axios";
+import { App, InjectionKey, inject, ref, computed, ComputedRef } from "vue";
+import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
 import { RouteLocationNormalized } from "vue-router";
 
 interface IConfig {
@@ -7,6 +7,8 @@ interface IConfig {
   authBaseURL?: string;
   onTokenExpire: () => void;
   prefix?: string;
+  getAxiosInstance?: (config?: AxiosRequestConfig) => AxiosInstance;
+  injectionKey?: string;
 }
 interface IUserInfo {
   username: string;
@@ -16,7 +18,7 @@ interface ITokens {
   refreshToken: string;
 }
 
-const accountProviderInjectionKey: InjectionKey<Account> = Symbol("account");
+const accountProviderInjectionKey: InjectionKey<IAccount> = Symbol("account");
 
 class AccountStorage {
   private ACCESS_TOKEN_KEY: string;
@@ -51,119 +53,136 @@ class AccountStorage {
     return this.getAccessToken() && this.getRefreshToken();
   }
 }
-
-class Account {
-  private baseURL: string;
-  private authBaseURL: string;
-  private onTokenExpire: () => void;
-  private storage: AccountStorage;
-
-  public origin: AxiosInstance;
-  public access: AxiosInstance;
-  public refresh: AxiosInstance;
-
-  constructor(config: IConfig) {
-    this.baseURL = config.baseURL;
-    this.authBaseURL = config.authBaseURL || "";
-    this.onTokenExpire = config.onTokenExpire;
-    this.storage = new AccountStorage(config.prefix);
-    this.origin = axios.create(this.defaults);
-    this.access = axios.create(this.defaults);
-    this.setupAccess();
-    this.refresh = axios.create(this.defaults);
-    this.setupRequest();
-  }
-  install(vue: App, injectKey?: InjectionKey<Account> | string) {
-    vue.provide(injectKey || accountProviderInjectionKey, this);
-  }
-  get defaults() {
-    return {
-      baseURL: this.baseURL,
-      headers: {
-        ["Content-Type"]: "application/json",
-      },
+interface IAccount {
+  readonly defaults: {
+    baseURL: string;
+    headers: {
+      ["Content-Type"]: "application/json";
     };
-  }
-  private withAuthBase(url: string) {
-    return `${this.authBaseURL}${url}`;
-  }
-  private setupAccess() {
-    this.access.interceptors.request.use((config) => {
-      const token = this.storage.getAccessToken();
-      token && (config.headers.Authorization = "Bearer " + token);
-      return config;
+  };
+  readonly isSignedIn: boolean;
+  origin: AxiosInstance;
+  access: AxiosInstance;
+  refresh: AxiosInstance;
+  user: ComputedRef<IUserInfo | undefined>;
+  signin(username: string, password: string): void;
+  info(): void;
+  signout(): void;
+  changeInfo(info?: IUserInfo): void;
+  install(app: App): void;
+}
+
+export function createAccount(config: IConfig): IAccount {
+  //#region parse config
+  const baseURL = config.baseURL;
+  const authBaseURL = config.authBaseURL || "";
+  const onTokenExpire = config.onTokenExpire;
+  const storage = new AccountStorage(config.prefix);
+  const getAxiosInstance =
+    config.getAxiosInstance ?? ((config) => axios.create(config));
+  const injectionKey = config.injectionKey || accountProviderInjectionKey;
+  //#endregion
+
+  //#region setup axios
+  const defaults: IAccount["defaults"] = {
+    baseURL: baseURL,
+    headers: {
+      ["Content-Type"]: "application/json",
+    },
+  };
+  const withAuthBase = (url: string) => `${authBaseURL}${url}`;
+  const origin = getAxiosInstance(defaults);
+  const access = getAxiosInstance(defaults);
+  const refresh = getAxiosInstance(defaults);
+  access.interceptors.request.use((config) => {
+    const token = storage.getAccessToken();
+    token && (config.headers.Authorization = "Bearer " + token);
+    return config;
+  });
+  access.interceptors.response.use(
+    (res) => res,
+    (err) => {
+      if (err.response && err.response.status === 401) {
+        return refresh.post(withAuthBase("/refresh")).then((res) => {
+          const data = res.data as ITokens;
+          storage.setAccessToken(data.accessToken);
+          storage.setRefreshToken(data.refreshToken);
+          return access(err.config);
+        });
+      } else return Promise.reject(err);
+    }
+  );
+  refresh.interceptors.request.use((config) => {
+    const token = storage.getRefreshToken();
+    token && (config.headers.Authorization = "Bearer " + token);
+    return config;
+  });
+  refresh.interceptors.response.use(
+    (res) => res,
+    (err) => {
+      if (err.response && err.response.status === 401) {
+        storage.destory();
+        onTokenExpire();
+      } else throw err;
+    }
+  );
+  //#endregion
+
+  //#region login logout
+  const user = ref<IUserInfo>();
+  async function signin(username: string, password: string) {
+    const res = await origin.post(withAuthBase("/signin"), undefined, {
+      auth: {
+        username,
+        password,
+      },
     });
-    this.access.interceptors.response.use(
-      (res) => res,
-      (err) => {
-        if (err.response && err.response.status === 401) {
-          return this.refresh
-            .post(this.withAuthBase("/refresh"))
-            .then((res) => {
-              const data = res.data as ITokens;
-              this.storage.setAccessToken(data.accessToken);
-              this.storage.setRefreshToken(data.refreshToken);
-              return this.access(err.config);
-            });
-        } else return Promise.reject(err);
-      }
-    );
-  }
-  private setupRequest() {
-    this.refresh.interceptors.request.use((config) => {
-      const token = this.storage.getRefreshToken();
-      token && (config.headers.Authorization = "Bearer " + token);
-      return config;
-    });
-    this.refresh.interceptors.response.use(
-      (res) => res,
-      (err) => {
-        if (err.response && err.response.status === 401) {
-          this.storage.destory();
-          this.onTokenExpire();
-        } else throw err;
-      }
-    );
-  }
-  get isSignedIn() {
-    return !!this.storage.getAccessToken() && !!this.storage.getRefreshToken();
-  }
-  public async signin(username: string, password: string) {
-    const res = await this.origin.post(
-      this.withAuthBase("/signin"),
-      undefined,
-      {
-        auth: {
-          username,
-          password,
-        },
-      }
-    );
     const data = res.data as ITokens;
-    this.storage.setAccessToken(data.accessToken);
-    this.storage.setRefreshToken(data.refreshToken);
+    storage.setAccessToken(data.accessToken);
+    storage.setRefreshToken(data.refreshToken);
+    await info();
     return res.data;
   }
-  public async signout() {
-    await this.refresh.post(this.withAuthBase("/signout"), {
-      access: this.storage.getAccessToken(),
+  async function info() {
+    return await access.get(withAuthBase("/info")).then((res) => {
+      user.value = res.data;
+      return res.data;
     });
-    this.storage.destory();
   }
-  public async info() {
-    return this.access
-      .get(this.withAuthBase("/refresh"))
-      .then((res) => res.data as IUserInfo);
+  async function signout() {
+    await refresh.post(withAuthBase("/signout"), {
+      access: storage.getAccessToken(),
+    });
+    storage.destory();
   }
-  public async changeInfo(info: { username?: string; password?: string } = {}) {
-    await this.access.put("/info", info);
+  async function changeInfo(
+    info: { username?: string; password?: string } = {}
+  ) {
+    return await access.put("/info", info);
   }
+  //#endregion
+  return {
+    get defaults() {
+      return defaults;
+    },
+    get isSignedIn() {
+      return !!storage.getAccessToken() && !!storage.getRefreshToken();
+    },
+    origin,
+    access,
+    refresh,
+    user: computed(() => user.value),
+    signin,
+    info,
+    signout,
+    changeInfo,
+    install(app: App) {
+      const account = this;
+      app.provide(injectionKey, account);
+    },
+  };
 }
 
-export function createAccount(config: IConfig) {
-  return new Account(config);
-}
-
-export function useAccount(key: InjectionKey<Account> | string | null = null) {
-  return inject(key || accountProviderInjectionKey);
+export function useAccount(key: InjectionKey<IAccount> | string | null = null) {
+  return inject(key || accountProviderInjectionKey)!;
 }
