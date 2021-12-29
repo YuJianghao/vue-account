@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.4](https://github.com/YuJianghao/vue-simple-account/compare/v0.0.3...v0.0.4) (2021-12-29)
+
+
+### Features
+
+* support custom axios ([8ab95ca](https://github.com/YuJianghao/vue-simple-account/commit/8ab95ca9dfeb38283c18413291d8be9ab9e21abc))
+
 ### 0.0.3 (2021-11-08)
 
 
