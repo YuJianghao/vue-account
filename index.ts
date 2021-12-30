@@ -1,6 +1,5 @@
 import { App, InjectionKey, inject, ref, computed, ComputedRef } from "vue";
 import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
-import { RouteLocationNormalized } from "vue-router";
 
 interface IConfig {
   baseURL: string;
@@ -131,11 +130,9 @@ export function createAccount(config: IConfig): IAccount {
   //#region login logout
   const user = ref<IUserInfo>();
   async function signin(username: string, password: string) {
-    const res = await origin.post(withAuthBase("/signin"), undefined, {
-      auth: {
-        username,
-        password,
-      },
+    const res = await origin.post(withAuthBase("/signin"), {
+      username,
+      password,
     });
     const data = res.data as ITokens;
     storage.setAccessToken(data.accessToken);
